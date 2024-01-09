@@ -23,10 +23,9 @@ namespace BuddyUp
         private BuddyUpRequestPacket requestPacket;
         private BuddyUpConfirmationPacket confirmPacket;
         private readonly List<IMyPlayer> players = new List<IMyPlayer>(1);
-        private readonly List<RelatablePair> keysToDelete = new List<RelatablePair>();
 
         public static BuddyUpSessionComponent Instance { get; private set; }
-        private readonly Dictionary<RelatablePair, DateTime> requests = new Dictionary<RelatablePair, DateTime>(RelatablePair.Comparer);
+        private readonly List<KeyValuePair<RelatablePair, DateTime>> requests = new List<KeyValuePair<RelatablePair, DateTime>>();
 
         private int expirySeconds = 300;
 
@@ -212,12 +211,12 @@ namespace BuddyUp
 
                     var now = DateTime.UtcNow;
                     var key = new RelatablePair(senderFaction.FactionId, receiverFaction.FactionId);
-                    bool handled = false;
-                    foreach (var item in requests)
+                    for (int i = requests.Count - 1; i >= 0; i--)
                     {
+                        var item = requests[i];
                         if (now > item.Value)
                         {
-                            keysToDelete.Add(item.Key);
+                            requests.RemoveAtFast(i);
                             continue;
                         }
                         // Need to look up this way instead of by key because we need to check the order of the requestors
@@ -227,8 +226,8 @@ namespace BuddyUp
                         }
                         if (item.Key.RelateeId1 == senderFaction.FactionId)
                         {
-                            handled = true;
                             MyVisualScriptLogicProvider.SendChatMessage($"An outstanding buddy up request already exists for the faction '{receiverFaction.Tag}'. Another request can be sent in {(int)Math.Ceiling((item.Value - now).TotalSeconds)} seconds.", "Buddy Up", senderPlayer.IdentityId);
+                            return;
                         }
                         if (item.Key.RelateeId2 == senderFaction.FactionId)
                         {
@@ -240,30 +239,24 @@ namespace BuddyUp
                             NotifyMembersInFaction(messageS, senderFaction, serialized);
                             var messageR = $"The faction '{senderFaction.Tag}' is now friendly!";
                             NotifyMembersInFaction(messageR, receiverFaction, serialized);
-                            keysToDelete.Add(item.Key);
-                            handled = true;
+                            requests.RemoveAtFast(i);
+                            return;
                         }
                     }
-
-                    ClearExpiredKeys();
-
-                    if (!handled)
+                    players.Clear();
+                    var onlinePlayers = MyVisualScriptLogicProvider.GetOnlinePlayers();
+                    MyAPIGateway.Multiplayer.Players.GetPlayers(players, p => receiverFaction.IsLeader(p.IdentityId) && onlinePlayers.Contains(p.IdentityId));
+                    if (players.Count > 0)
                     {
-                        players.Clear();
-                        var onlinePlayers = MyVisualScriptLogicProvider.GetOnlinePlayers();
-                        MyAPIGateway.Multiplayer.Players.GetPlayers(players, p => receiverFaction.IsLeader(p.IdentityId) && onlinePlayers.Contains(p.IdentityId));
-                        if (players.Count > 0)
-                        {
-                            var message = $"The player {senderPlayer.DisplayName} in faction '{senderFaction.Tag}' wants to buddy up! Type '/buddyup {senderFaction.Tag}' in chat to accept, or just ignore this message to refuse.";
-                            NotifyLeadersInFaction(message, receiverFaction);
-                            requests.Add(new RelatablePair(senderFaction.FactionId, receiverFaction.FactionId), now.AddSeconds(expirySeconds));
-                            var message2 = $"Buddy request sent to '{receiverFaction.Tag}' by {senderPlayer.DisplayName}!";
-                            NotifyLeadersInFaction(message2, senderFaction);
-                        }
-                        else
-                        {
-                            MyVisualScriptLogicProvider.SendChatMessage($"Request not sent: No leader from the faction '{receiverFaction.Tag}' is available to receive the request.");
-                        }
+                        var message = $"The player {senderPlayer.DisplayName} in faction '{senderFaction.Tag}' wants to buddy up! Type '/buddyup {senderFaction.Tag}' in chat to accept, or just ignore this message to refuse.";
+                        NotifyLeadersInFaction(message, receiverFaction);
+                        requests.Add(new KeyValuePair<RelatablePair, DateTime>(new RelatablePair(senderFaction.FactionId, receiverFaction.FactionId), now.AddSeconds(expirySeconds)));
+                        var message2 = $"Buddy request sent to '{receiverFaction.Tag}' by {senderPlayer.DisplayName}!";
+                        NotifyLeadersInFaction(message2, senderFaction);
+                    }
+                    else
+                    {
+                        MyVisualScriptLogicProvider.SendChatMessage($"Request not sent: No leader from the faction '{receiverFaction.Tag}' is available to receive the request.");
                     }
                 }
                 catch (Exception e)
@@ -271,15 +264,6 @@ namespace BuddyUp
                     MyLog.Default.WriteLineAndConsole($"Buddyup: Error: {e.Message} {e.StackTrace}");
                 }
             }
-        }
-
-        private void ClearExpiredKeys()
-        {
-            foreach (var item in keysToDelete)
-            {
-                requests.Remove(item);
-            }
-            keysToDelete.Clear();
         }
 
         private void NotifyLeadersInFaction(string message, IMyFaction faction)
