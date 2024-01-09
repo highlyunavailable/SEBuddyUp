@@ -16,7 +16,7 @@ namespace BuddyUp
     [MySessionComponentDescriptor(MyUpdateOrder.NoUpdate)]
     public class BuddyUpSessionComponent : MySessionComponentBase
     {
-        public const ushort NetworkId = (ushort)(3135132716 % ushort.MaxValue);
+        public const ushort NetworkId = (ushort)(3135280138 % ushort.MaxValue);
 
         public Network Net;
 
