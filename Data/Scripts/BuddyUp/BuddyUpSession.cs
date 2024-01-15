@@ -29,7 +29,7 @@ namespace BuddyUp
 
         private int expirySeconds = 300;
 
-        private static Regex commandMatch = new Regex(@"^/buddyup (\w+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static Regex commandMatch = new Regex(@"^/buddyup (.+)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         public override void LoadData()
         {
